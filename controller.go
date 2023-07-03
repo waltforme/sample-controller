@@ -61,6 +61,9 @@ const (
 	MessageResourceSynced = "Foo synced successfully"
 )
 
+// deploymentNs is the namespace for foo's deployments which is necessary because now foos are nonNamespaced
+const deploymentNs = "default" // TODO: wire this to foo's spec
+
 // Controller is the controller implementation for Foo resources
 type Controller struct {
 	// kubeclientset is a standard kubernetes clientset
@@ -250,14 +253,14 @@ func (c *Controller) syncHandler(ctx context.Context, key string) error {
 	// Convert the namespace/name string into a distinct namespace and name
 	logger := klog.LoggerWithValues(klog.FromContext(ctx), "resourceName", key)
 
-	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	_, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
 
 	// Get the Foo resource with this namespace/name
-	foo, err := c.foosLister.Foos(namespace).Get(name)
+	foo, err := c.foosLister.Get(name)
 	if err != nil {
 		// The Foo resource may no longer exist, in which case we stop
 		// processing.
@@ -279,10 +282,10 @@ func (c *Controller) syncHandler(ctx context.Context, key string) error {
 	}
 
 	// Get the deployment with the name specified in Foo.spec
-	deployment, err := c.deploymentsLister.Deployments(foo.Namespace).Get(deploymentName)
+	deployment, err := c.deploymentsLister.Deployments(deploymentNs).Get(deploymentName)
 	// If the resource doesn't exist, we'll create it
 	if errors.IsNotFound(err) {
-		deployment, err = c.kubeclientset.AppsV1().Deployments(foo.Namespace).Create(context.TODO(), newDeployment(foo), metav1.CreateOptions{})
+		deployment, err = c.kubeclientset.AppsV1().Deployments(deploymentNs).Create(context.TODO(), newDeployment(foo), metav1.CreateOptions{})
 	}
 
 	// If an error occurs during Get/Create, we'll requeue the item so we can
@@ -305,7 +308,7 @@ func (c *Controller) syncHandler(ctx context.Context, key string) error {
 	// should update the Deployment resource.
 	if foo.Spec.Replicas != nil && *foo.Spec.Replicas != *deployment.Spec.Replicas {
 		logger.V(4).Info("Update deployment resource", "currentReplicas", *foo.Spec.Replicas, "desiredReplicas", *deployment.Spec.Replicas)
-		deployment, err = c.kubeclientset.AppsV1().Deployments(foo.Namespace).Update(context.TODO(), newDeployment(foo), metav1.UpdateOptions{})
+		deployment, err = c.kubeclientset.AppsV1().Deployments(deploymentNs).Update(context.TODO(), newDeployment(foo), metav1.UpdateOptions{})
 	}
 
 	// If an error occurs during Update, we'll requeue the item so we can
@@ -336,7 +339,7 @@ func (c *Controller) updateFooStatus(foo *samplev1alpha1.Foo, deployment *appsv1
 	// we must use Update instead of UpdateStatus to update the Status block of the Foo resource.
 	// UpdateStatus will not allow changes to the Spec of the resource,
 	// which is ideal for ensuring nothing other than resource status has been updated.
-	_, err := c.sampleclientset.SamplecontrollerV1alpha1().Foos(foo.Namespace).UpdateStatus(context.TODO(), fooCopy, metav1.UpdateOptions{})
+	_, err := c.sampleclientset.SamplecontrollerV1alpha1().Foos().UpdateStatus(context.TODO(), fooCopy, metav1.UpdateOptions{})
 	return err
 }
 
@@ -383,7 +386,7 @@ func (c *Controller) handleObject(obj interface{}) {
 			return
 		}
 
-		foo, err := c.foosLister.Foos(object.GetNamespace()).Get(ownerRef.Name)
+		foo, err := c.foosLister.Get(ownerRef.Name)
 		if err != nil {
 			logger.V(4).Info("Ignore orphaned object", "object", klog.KObj(object), "foo", ownerRef.Name)
 			return
@@ -405,7 +408,7 @@ func newDeployment(foo *samplev1alpha1.Foo) *appsv1.Deployment {
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      foo.Spec.DeploymentName,
-			Namespace: foo.Namespace,
+			Namespace: deploymentNs,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(foo, samplev1alpha1.SchemeGroupVersion.WithKind("Foo")),
 			},

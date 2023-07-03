@@ -38,4 +38,4 @@ spec:
   names:
     kind: Foo
     plural: foos
-  scope: Namespaced
+  scope: Cluster

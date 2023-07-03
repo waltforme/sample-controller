@@ -36,8 +36,8 @@ type SamplecontrollerV1alpha1Client struct {
 	restClient rest.Interface
 }
 
-func (c *SamplecontrollerV1alpha1Client) Foos(namespace string) FooInterface {
-	return newFoos(c, namespace)
+func (c *SamplecontrollerV1alpha1Client) Foos() FooInterface {
+	return newFoos(c)
 }
 
 // NewForConfig creates a new SamplecontrollerV1alpha1Client for the given config.
