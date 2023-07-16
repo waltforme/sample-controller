@@ -272,7 +272,7 @@ func (c *Controller) syncHandler(ctx context.Context, key string) error {
 		return err
 	}
 
-	deploymentName := foo.Spec.DeploymentName
+	deploymentName := generateDeploymentNameFrom(foo)
 	if deploymentName == "" {
 		// We choose to absorb the error here as the worker would requeue the
 		// resource otherwise. Instead, the next time the resource is updated
@@ -407,7 +407,7 @@ func newDeployment(foo *samplev1alpha1.Foo) *appsv1.Deployment {
 	}
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      foo.Spec.DeploymentName,
+			Name:      generateDeploymentNameFrom(foo),
 			Namespace: deploymentNs,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(foo, samplev1alpha1.SchemeGroupVersion.WithKind("Foo")),
@@ -433,4 +433,16 @@ func newDeployment(foo *samplev1alpha1.Foo) *appsv1.Deployment {
 			},
 		},
 	}
+}
+
+func generateDeploymentNameFrom(f *samplev1alpha1.Foo) string {
+	name := f.Spec.DeploymentName
+	// This is my convention for kube-bind to sync cluster-scoped objects, which applies to Foo now
+	ors := f.OwnerReferences
+	if len(ors) == 1 {
+		if or := ors[0]; or.Kind == "Namespace" {
+			name = or.Name + "-" + name
+		}
+	}
+	return name
 }
